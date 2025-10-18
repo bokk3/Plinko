@@ -1,0 +1,101 @@
+version: '3.6'
+services:
+  supabase-db:
+    image: supabase/postgres:15.1.0.63
+    restart: unless-stopped
+    ports:
+      - 54322:5432
+    volumes:
+      - ./supabase/data:/var/lib/postgresql/data
+    environment:
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: postgres
+      POSTGRES_USER: postgres
+
+  supabase-rest:
+    image: supabase/postgrest:v11.2.0
+    restart: unless-stopped
+    ports:
+      - 54323:3000
+    depends_on:
+      - supabase-db
+    environment:
+      PGRST_DB_URI: postgres://postgres:postgres@supabase-db:5432/postgres
+      PGRST_DB_ANON_ROLE: anon
+      PGRST_DB_SCHEMA: public
+      PGRST_JWT_SECRET: super-secret-jwt-token
+
+  supabase-auth:
+    image: supabase/gotrue:v2.134.0
+    restart: unless-stopped
+    ports:
+      - 54324:9999
+    depends_on:
+      - supabase-db
+    environment:
+      GOTRUE_DB_DRIVER: postgres
+      GOTRUE_DB_DATABASE_URL: postgres://postgres:postgres@supabase-db:5432/postgres?sslmode=disable
+      GOTRUE_JWT_SECRET: super-secret-jwt-token
+      GOTRUE_SITE_URL: http://localhost:54321
+      GOTRUE_API_HOST: 0.0.0.0
+      GOTRUE_API_PORT: 9999
+      GOTRUE_DISABLE_SIGNUP: 'false'
+
+  supabase-storage:
+    image: supabase/storage-api:v0.41.3
+    restart: unless-stopped
+    ports:
+      - 54325:5000
+    depends_on:
+      - supabase-db
+    environment:
+      ANON_KEY: super-secret-jwt-token
+      SERVICE_KEY: super-secret-jwt-token
+      POSTGREST_URL: http://supabase-rest:3000
+      PGRST_JWT_SECRET: super-secret-jwt-token
+      DATABASE_URL: postgres://postgres:postgres@supabase-db:5432/postgres
+      FILE_SIZE_LIMIT: 52428800
+      STORAGE_BACKEND: file
+      FILE_STORAGE_BACKEND_PATH: /var/lib/storage
+    volumes:
+      - ./supabase/storage:/var/lib/storage
+
+  supabase-realtime:
+    image: supabase/realtime:v2.33.0
+    restart: unless-stopped
+    ports:
+      - 54326:4000
+    depends_on:
+      - supabase-db
+    environment:
+      DB_HOST: supabase-db
+      DB_PORT: 5432
+      DB_NAME: postgres
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      PORT: 4000
+      JWT_SECRET: super-secret-jwt-token
+      REPLICATION_MODE: RLS
+      DB_SSL: 'false'
+
+  supabase-studio:
+    image: supabase/studio:20240508-4b1b7e6
+    restart: unless-stopped
+    ports:
+      - 54321:3000
+    depends_on:
+      - supabase-db
+    environment:
+      STUDIO_PG_META_URL: http://supabase-db:5432
+      SUPABASE_URL: http://localhost:54321
+      SUPABASE_ANON_KEY: super-secret-jwt-token
+      SUPABASE_SERVICE_KEY: super-secret-jwt-token
+      POSTGRES_PASSWORD: postgres
+      DEFAULT_PROJECT: true
+      STUDIO_PORT: 3000
+      STUDIO_DB_HOST: supabase-db
+      STUDIO_DB_PORT: 5432
+      STUDIO_DB_NAME: postgres
+      STUDIO_DB_USER: postgres
+      STUDIO_DB_PASSWORD: postgres
+      STUDIO_JWT_SECRET: super-secret-jwt-token
