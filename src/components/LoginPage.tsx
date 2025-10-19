@@ -1,57 +1,75 @@
 import React, { useState } from 'react';
+import { supabase } from '../supabaseClient';
 
+// User type can be extended as needed
 export interface User {
-  username: string;
-  password: string;
+  id: string;
+  email: string;
   balance: number;
   totalWinnings: number;
   lastWheelSpin: string;
 }
 
 interface LoginPageProps {
-  users: User[];
-  setUsers: (users: User[]) => void;
   setCurrentUser: (user: User | null) => void;
 }
 
-const LoginPage: React.FC<LoginPageProps> = ({ users, setUsers, setCurrentUser }) => {
+const LoginPage: React.FC<LoginPageProps> = ({ setCurrentUser }) => {
   const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
-  const [username, setUsername] = useState('');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
 
-  const handleRegister = () => {
+  const handleRegister = async () => {
     setError('');
-    if (!username || !password) {
-      setError('Username and password required');
+    if (!email || !password) {
+      setError('Email and password required');
       return;
     }
-    if (users.some((u) => u.username === username)) {
-      setError('Username already exists');
-      return;
-    }
-    const newUser: User = {
-      username,
+    const { data, error: signUpError } = await supabase.auth.signUp({
+      email,
       password,
-      balance: 150,
-      totalWinnings: 0,
-      lastWheelSpin: '2000-01-01',
-    };
-    setUsers([...users, newUser]);
-    setCurrentUser(newUser);
-    setUsername('');
+    });
+    if (signUpError) {
+      setError(signUpError.message);
+      return;
+    }
+    if (data.user) {
+      // On registration, set default values for new user
+      setCurrentUser({
+        id: data.user.id,
+        email: data.user.email || '',
+        balance: 150,
+        totalWinnings: 0,
+        lastWheelSpin: '2000-01-01',
+      });
+    }
+    setEmail('');
     setPassword('');
   };
 
-  const handleLogin = () => {
+  const handleLogin = async () => {
     setError('');
-    const user = users.find((u) => u.username === username && u.password === password);
-    if (!user) {
-      setError('Invalid username or password');
+    const { data, error: signInError } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    });
+    if (signInError || !data.user) {
+      setError(signInError?.message || 'Invalid email or password');
       return;
     }
-    setCurrentUser(user);
-    setUsername('');
+    // On login, fetch user profile from Supabase users table
+    if (data.user) {
+      // You may want to fetch from Supabase here for real data
+      setCurrentUser({
+        id: data.user.id,
+        email: data.user.email || '',
+        balance: 150, // TODO: fetch from DB
+        totalWinnings: 0, // TODO: fetch from DB
+        lastWheelSpin: '2000-01-01', // TODO: fetch from DB
+      });
+    }
+    setEmail('');
     setPassword('');
   };
 
@@ -74,10 +92,10 @@ const LoginPage: React.FC<LoginPageProps> = ({ users, setUsers, setCurrentUser }
           </button>
         </div>
         <input
-          type="text"
-          placeholder="Username"
-          value={username}
-          onChange={(e) => setUsername(e.target.value)}
+          type="email"
+          placeholder="Email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
           className="w-full px-4 py-2 mb-4 bg-gray-700 text-white rounded border border-gray-600 focus:border-cyan-500 outline-none"
         />
         <input
@@ -94,10 +112,7 @@ const LoginPage: React.FC<LoginPageProps> = ({ users, setUsers, setCurrentUser }
         >
           {authMode === 'login' ? 'Login' : 'Register'}
         </button>
-        <div className="mt-6 text-gray-400 text-sm">
-          <p className="mb-2">Demo account:</p>
-          <p>username: demo | password: demo</p>
-        </div>
+        {/* You can add demo/test account info here if needed */}
       </div>
     </div>
   );

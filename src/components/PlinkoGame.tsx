@@ -1,5 +1,6 @@
 import React, { useRef, useEffect, useState } from 'react';
 import type { User } from './LoginPage';
+import { supabase } from '../supabaseClient';
 
 export interface Ball {
   id: number;
@@ -17,10 +18,8 @@ export interface Peg {
 }
 
 interface PlinkoGameProps {
-  currentUser: User;
-  setCurrentUser: (user: User) => void;
-  users: User[];
-  setUsers: (users: User[]) => void;
+  currentUser: User & { balance: number; totalWinnings: number; lastWheelSpin: string };
+  setCurrentUser: (user: User & { balance: number; totalWinnings: number; lastWheelSpin: string }) => void;
   betAmount: number;
   setBetAmount: (amount: number) => void;
 }
@@ -36,7 +35,7 @@ const BOUNCE = 0.8;
 const FRICTION = 0.99;
 const SLOTS = 9;
 
-const PlinkoGame: React.FC<PlinkoGameProps> = ({ currentUser, setCurrentUser, users, setUsers, betAmount, setBetAmount }) => {
+const PlinkoGame: React.FC<PlinkoGameProps> = ({ currentUser, setCurrentUser, betAmount, setBetAmount }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [score, setScore] = useState(0);
   const [balls, setBalls] = useState<Ball[]>([]);
@@ -67,7 +66,7 @@ const PlinkoGame: React.FC<PlinkoGameProps> = ({ currentUser, setCurrentUser, us
     return multipliers[slot] || 1;
   };
 
-  const startGame = () => {
+  const startGame = async () => {
     if (currentUser.balance < betAmount) return;
     setGameRunning(true);
     setScore(0);
@@ -81,32 +80,36 @@ const PlinkoGame: React.FC<PlinkoGameProps> = ({ currentUser, setCurrentUser, us
       slot: null,
     };
     setBalls([newBall]);
-    const updatedUser = {
-      ...currentUser,
-      balance: currentUser.balance - betAmount,
-    };
-    setCurrentUser(updatedUser);
-    setUsers(users.map((u) => (u.username === currentUser.username ? updatedUser : u)));
+    const newBalance = currentUser.balance - betAmount;
+    const { error } = await supabase
+      .from('users')
+      .update({ balance: newBalance })
+      .eq('id', currentUser.id);
+    if (!error) {
+      setCurrentUser({ ...currentUser, balance: newBalance });
+    }
   };
 
-  const dropBall = () => {
+  const dropBall = async () => {
     if (currentUser.balance < betAmount) return;
-    const updatedUser = {
-      ...currentUser,
-      balance: currentUser.balance - betAmount,
-    };
-    setCurrentUser(updatedUser);
-    setUsers(users.map((u) => (u.username === currentUser.username ? updatedUser : u)));
-    const newBall: Ball = {
-      id: ballIdRef.current++,
-      x: CANVAS_WIDTH / 2,
-      y: 20,
-      vx: (Math.random() - 0.5) * 2,
-      vy: 0,
-      landed: false,
-      slot: null,
-    };
-    setBalls((prev) => [...prev, newBall]);
+    const newBalance = currentUser.balance - betAmount;
+    const { error } = await supabase
+      .from('users')
+      .update({ balance: newBalance })
+      .eq('id', currentUser.id);
+    if (!error) {
+      setCurrentUser({ ...currentUser, balance: newBalance });
+      const newBall: Ball = {
+        id: ballIdRef.current++,
+        x: CANVAS_WIDTH / 2,
+        y: 20,
+        vx: (Math.random() - 0.5) * 2,
+        vy: 0,
+        landed: false,
+        slot: null,
+      };
+      setBalls((prev) => [...prev, newBall]);
+    }
   };
 
   const updateBalls = () => {
@@ -147,13 +150,17 @@ const PlinkoGame: React.FC<PlinkoGameProps> = ({ currentUser, setCurrentUser, us
           const winnings = Math.round(betAmount * finalMultiplier);
           setScore((prev) => prev + winnings);
           const updatedBalance = currentUser.balance + winnings;
-          const updatedUser = {
-            ...currentUser,
-            balance: updatedBalance,
-            totalWinnings: currentUser.totalWinnings + winnings,
-          };
-          setCurrentUser(updatedUser);
-          setUsers(users.map((u) => (u.username === currentUser.username ? updatedUser : u)));
+          const updatedTotalWinnings = (currentUser.totalWinnings || 0) + winnings;
+          // Async update to Supabase and user state
+          (async () => {
+            const { error } = await supabase
+              .from('users')
+              .update({ balance: updatedBalance, totalWinnings: updatedTotalWinnings })
+              .eq('id', currentUser.id);
+            if (!error) {
+              setCurrentUser({ ...currentUser, balance: updatedBalance, totalWinnings: updatedTotalWinnings });
+            }
+          })();
           return { ...ball, landed: true, slot, y: CANVAS_HEIGHT - 20 };
         }
         return { ...ball, x, y, vx, vy };

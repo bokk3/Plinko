@@ -1,16 +1,15 @@
 import React, { useState, useRef } from 'react';
 import type { User } from './LoginPage';
+import { supabase } from '../supabaseClient';
 
 interface WheelSpinProps {
-  currentUser: User;
-  setCurrentUser: (user: User) => void;
-  users: User[];
-  setUsers: (users: User[]) => void;
+  currentUser: User & { balance: number; lastWheelSpin: string };
+  setCurrentUser: (user: User & { balance: number; lastWheelSpin: string }) => void;
 }
 
 const rewards = [25, 50, 10, 75, 30, 100, 20, 250];
 
-const WheelSpin: React.FC<WheelSpinProps> = ({ currentUser, setCurrentUser, users, setUsers }) => {
+const WheelSpin: React.FC<WheelSpinProps> = ({ currentUser, setCurrentUser }) => {
   const [wheelSpinning, setWheelSpinning] = useState(false);
   const [wheelReward, setWheelReward] = useState<number | null>(null);
   const [wheelRotation, setWheelRotation] = useState(0);
@@ -53,7 +52,7 @@ const WheelSpin: React.FC<WheelSpinProps> = ({ currentUser, setCurrentUser, user
     }
   };
 
-  const spinWheel = () => {
+  const spinWheel = async () => {
     if (!canSpinWheel()) return;
     setWheelSpinning(true);
     setWheelRotation(0);
@@ -61,7 +60,7 @@ const WheelSpin: React.FC<WheelSpinProps> = ({ currentUser, setCurrentUser, user
     playSpinSound();
     let startTime = Date.now();
     const duration = 2000;
-    const animateWheel = () => {
+    const animateWheel = async () => {
       const elapsed = Date.now() - startTime;
       const progress = Math.min(elapsed / duration, 1);
       const easeProgress = 1 - Math.pow(1 - progress, 3);
@@ -77,13 +76,15 @@ const WheelSpin: React.FC<WheelSpinProps> = ({ currentUser, setCurrentUser, user
         setWheelRotation(finalRotation);
         setWheelReward(reward);
         setWheelSpinning(false);
-        const updatedUser = {
-          ...currentUser,
-          balance: currentUser.balance + reward,
-          lastWheelSpin: new Date().toISOString(),
-        };
-        setCurrentUser(updatedUser);
-        setUsers(users.map((u) => (u.username === currentUser.username ? updatedUser : u)));
+        const newBalance = currentUser.balance + reward;
+        const newLastSpin = new Date().toISOString();
+        const { error } = await supabase
+          .from('users')
+          .update({ balance: newBalance, lastWheelSpin: newLastSpin })
+          .eq('id', currentUser.id);
+        if (!error) {
+          setCurrentUser({ ...currentUser, balance: newBalance, lastWheelSpin: newLastSpin });
+        }
       }
     };
     animateWheel();
